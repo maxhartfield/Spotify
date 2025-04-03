@@ -9,6 +9,7 @@ library(cluster)      # For clustering analysis
 
 #import dataset
 spotify_data <- read.csv("~/Downloads/SpotifyFeatures.csv")
+dim(spotify_data)
 View(spotify_data)
 #check for missing values:
 sum(is.na(spotify_data))
@@ -35,6 +36,14 @@ genre_cols <- grep("^genre", names(spotify_data), value = TRUE)
 new_names <- setNames(paste0("genre: ", sub("^genre", "", genre_cols)), genre_cols)
 names(spotify_data)[names(spotify_data) %in% genre_cols] <- new_names
 View(spotify_data)
+col1 <- "genre: Children's Music"
+col2 <- "genre: Children’s Music"
+spotify_data[[col1]] <- pmax(
+  spotify_data[[col1]],
+  spotify_data[[col2]],
+  na.rm = TRUE
+)
+dim(spotify_data)
 #explore data
 summary(spotify_data)
 hist(spotify_data$popularity, main = "Distribution of Popularity", xlab = "Popularity", col = "skyblue", breaks = 30)
@@ -70,7 +79,7 @@ summary(popularity_lm)
 #Can we cluster songs into meaningful groups based on audio features?
 # Select only numeric audio features for PCA
 features <- spotify_data[, c("danceability", "energy", "loudness", "speechiness", "acousticness", 
-                             "instrumentalness", "liveness", "valence", "tempo")]]
+                             "instrumentalness", "liveness", "valence", "tempo")]
 features_scaled <- scale(features)
 # Run PCA
 pca_result <- PCA(features_scaled, scale.unit = TRUE, graph = FALSE)
