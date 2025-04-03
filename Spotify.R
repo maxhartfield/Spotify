@@ -86,8 +86,8 @@ summary(popularity_lm)
 library(tidyverse)
 library(caret)
 
-# creating "is_hit" column by calculating 90th percentile of popularity
-hit_threshold <- quantile(spotify_data$popularity, probs = 0.90)
+# creating "is_hit" column by calculating 80th percentile of popularity
+hit_threshold <- quantile(spotify_data$popularity, probs = 0.80)
 
 # create binary target
 spotify_data <- spotify_data |>
