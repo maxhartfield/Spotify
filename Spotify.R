@@ -1,5 +1,12 @@
 library(dplyr)
 library(tidyr)
+#Preliminary Library imports
+install.packages(c("ggplot2", "FactoMineR", "factoextra", "cluster"))
+library(ggplot2)
+library(FactoMineR)   # For PCA computation
+library(factoextra)   # For PCA visualization
+library(cluster)      # For clustering analysis
+
 #import dataset
 spotify_data <- read.csv("~/Downloads/SpotifyFeatures.csv")
 View(spotify_data)
@@ -57,4 +64,42 @@ model_data <- spotify_data[, c("popularity", "acousticness", "danceability", "en
                                "instrumentalness", "liveness", "loudness", 
                                "speechiness", "tempo", "valence")]
 popularity_lm <- lm(popularity ~ ., data = model_data)
-summary(popularity_lm)
+summary(popularity_lm) 
+
+#Question 3 initial results using PCA 
+#Can we cluster songs into meaningful groups based on audio features?
+# Select only numeric audio features for PCA
+features <- spotify_data[, c("danceability", "energy", "loudness", "speechiness", "acousticness", 
+                             "instrumentalness", "liveness", "valence", "tempo")]]
+features_scaled <- scale(features)
+# Run PCA
+pca_result <- PCA(features_scaled, scale.unit = TRUE, graph = FALSE)
+
+# Visualize variance explained by each principal component
+fviz_eig(pca_result, addlabels = TRUE, ylim = c(0, 50))
+
+# PCA Biplot (First two components)
+fviz_pca_biplot(pca_result, 
+                repel = TRUE, 
+                col.var = "blue", # Color of variables
+                col.ind = "red")  # Color of observations (songs)
+
+# Extract first two principal components
+pca_data <- data.frame(pca_result$ind$coord[, 1:2])
+
+# Determine the optimal number of clusters using the Elbow Method
+fviz_nbclust(pca_data, kmeans, method = "wss")
+
+# Apply K-Means Clustering with chosen k (e.g., k = 3)
+set.seed(123)
+kmeans_result <- kmeans(pca_data, centers = 3, nstart = 25)
+
+# Visualize Clusters
+fviz_cluster(kmeans_result, data = pca_data, 
+             ellipse.type = "convex",
+             geom = "point", 
+             palette = "jco",
+             ggtheme = theme_minimal())
+
+#Question 4 results 
+#
