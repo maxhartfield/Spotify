@@ -1,4 +1,5 @@
 library(dplyr)
+library(tidyr)
 #import dataset
 spotify_data <- read.csv("~/Downloads/SpotifyFeatures.csv")
 View(spotify_data)
@@ -13,7 +14,7 @@ sum(duplicated(spotify_data))
 #Although this will increase the dimensionality of our dataset by 27, it will 
 #be a much cleaner dataset, and we can always use PCA to reduce the dimensionality.
 genre_dummies <- model.matrix(~ genre - 1, data = spotify_data)
-spotify_data <- cbind(spotify_data[, -which(names(spotify_data) == "genre ")], genre_dummies)
+spotify_data <- cbind(spotify_data[, -which(names(spotify_data) == "genre")], genre_dummies)
 duplicates_count <- spotify_data %>%
   group_by(track_id, track_name, artist_name) %>%
   tally() %>%
@@ -23,6 +24,9 @@ nrow(duplicates_count)
 spotify_data <- spotify_data %>%
   group_by(track_id, track_name, artist_name) %>%
   summarise(across(where(is.numeric), ~ ifelse(all(. %in% c(0, 1)), max(.), mean(.))), .groups = "drop")
+genre_cols <- grep("^genre", names(spotify_data), value = TRUE)
+new_names <- setNames(paste0("genre: ", sub("^genre", "", genre_cols)), genre_cols)
+names(spotify_data)[names(spotify_data) %in% genre_cols] <- new_names
 View(spotify_data)
 #explore data
 summary(spotify_data)
@@ -36,17 +40,17 @@ hist(spotify_data$duration_ms / 60000,
 numeric_cols <- sapply(spotify_data, is.numeric)
 cor_matrix <- cor(spotify_data[, numeric_cols])
 round(cor_matrix, 2)
-genre_cols <- grep("^genre", names(spotify_data), value = TRUE)
+genre_cols <- grep("^genre: ", names(spotify_data), value = TRUE)
 long_genres <- spotify_data %>%
   select(track_id, popularity, all_of(genre_cols)) %>%
   pivot_longer(cols = all_of(genre_cols), names_to = "genre", values_to = "present") %>%
   filter(present == 1)
+par(mar = c(10, 4, 4, 2))  # bottom, left, top, right
 boxplot(popularity ~ genre, data = long_genres,
         main = "Popularity by Genre (One-Hot Encoded)",
         xlab = "", ylab = "Popularity",
         las = 2,
-        col = "skyblue",
-        cex.axis = 0.7) 
+        col = "skyblue") 
 #Question 1 initial results using linear regression
 #What audio features most influence a song’s popularity score?
 model_data <- spotify_data[, c("popularity", "acousticness", "danceability", "energy", 
