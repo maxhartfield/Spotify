@@ -150,7 +150,7 @@ ggplot(loudness_effect, aes(x = x, y = predicted)) +
 # partial effects plot on instrumentalness (low probability)
 instrumentalness_effect <- ggpredict(logis_model, terms = "instrumentalness [all]")
 
-ggplot(tempo_effect, aes(x = x, y = predicted)) +
+ggplot(instrumentalness_effect, aes(x = x, y = predicted)) +
   geom_line(color = "red", size = 1.5) +
   geom_ribbon(aes(ymin = conf.low, ymax = conf.high), alpha = 0.2) +
   labs(title = "Effect of Instrumentalness on Hit Probability",
