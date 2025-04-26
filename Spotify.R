@@ -8,6 +8,7 @@ library(factoextra)   # For PCA visualization
 library(cluster)      # For clustering analysis
 
 #import dataset
+spotify_data <- SpotifyFeatures # (enoch)
 spotify_data <- read.csv("~/Downloads/SpotifyFeatures.csv")
 dim(spotify_data)
 View(spotify_data)
