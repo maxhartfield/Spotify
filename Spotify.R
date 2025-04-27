@@ -10,7 +10,6 @@ library(corrplot)
 
 
 #import dataset
-spotify_data <- SpotifyFeatures # (enoch)
 spotify_data <- read.csv("~/Downloads/SpotifyFeatures.csv")
 dim(spotify_data)
 View(spotify_data)
@@ -225,7 +224,7 @@ spotify_test <- model_data[-train_index, ]
 
 ################################################################################
 ############## Fit a Single Regression Tree
-tree_model <- tree(popularity ~ ., data = spotify_train)
+tree_model <- tree(popularity ~ ., data = spotify_train, control = tree.control(nobs = nrow(spotify_train), mindev = 0.005))
 
 # View summary of the tree
 summary(tree_model)
@@ -241,11 +240,11 @@ set.seed(100)
 ncol_spotify <- ncol(model_data)
 
 rf_model <- randomForest(popularity ~ ., data = spotify_train, mtry = floor(sqrt(ncol_spotify - 1)), ntree = 500, importance = TRUE)
+importance(rf_model)
 
 # Plot variable importance
 varImpPlot(rf_model, 
-           main = "Random Forest Variable Importance for Song Popularity",
-           col = "skyblue")
+           main = "Random Forest Variable Importance for Song Popularity")
 
 
 # Question 2: Can we accurately predict whether a song becomes a hit?
@@ -258,7 +257,7 @@ hit_threshold <- quantile(spotify_data$popularity, probs = 0.90)
 # create binary target
 spotify_data <- spotify_data |>
   mutate(is_hit = as.factor(ifelse(popularity >= hit_threshold, 1, 0)))
-
+View(spotify_data)
 # double checking distribution of hit songs
 table(spotify_data$is_hit)
 prop.table(table(spotify_data$is_hit))
