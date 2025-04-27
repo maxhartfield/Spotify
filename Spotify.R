@@ -85,16 +85,24 @@ summary(popularity_lm)
 # Question 2: Can we accurately predict whether a song becomes a hit?
 library(tidyverse)
 library(caret)
+library(rpart)
+library(xgboost)
+library(pROC)
+library(ranger)
+library(rpart.plot)
+library(pROC)
 
 # create my own dataset to use for this analysis
 enoch_df <- spotify_data
 
-# creating "is_hit" column by calculating 80th percentile of popularity
-hit_threshold <- quantile(enoch_df$popularity, probs = 0.80)
+# creating "is_hit" column by calculating 90th percentile of popularity
+hit_threshold <- quantile(enoch_df$popularity, probs = 0.90)
 
 # create binary target
 enoch_df <- enoch_df |>
-  mutate(is_hit = as.factor(ifelse(popularity >= hit_threshold, 1, 0)))
+  mutate(is_hit = factor(
+    ifelse(popularity >= hit_threshold, "hit", "nonhit"),
+           levels = c("hit", "nonhit")))
 
 # double checking distribution of hit songs
 table(enoch_df$is_hit)
@@ -102,19 +110,27 @@ prop.table(table(enoch_df$is_hit))
 
 # split data into training and test data (80/20)
 set.seed(123)
-log_train_index <- createDataPartition(enoch_df$is_hit, p = 0.8, list = FALSE)
-log_train <- enoch_df[log_train_index, ]
-log_test <- enoch_df[-log_train_index, ]
+train_index <- createDataPartition(enoch_df$is_hit, p = 0.8, list = FALSE)
+train <- enoch_df[train_index, ]
+test <- enoch_df[-train_index, ]
+
+train_small <- train |>
+  group_by(is_hit) |>
+  sample_frac(0.20) |>
+  ungroup()
 
 # normalizing numeric features
-preprocess_parms <- preProcess(log_train |>
+preprocess_parms <- preProcess(train |>
                                  select_if(is.numeric),
                                method = c("center", "scale"))
 
-log_train <- predict(preprocess_parms, log_train)
-log_test <- predict(preprocess_parms, log_test)
+train <- predict(preprocess_parms, train)
+test <- predict(preprocess_parms, test)
 
-# logistic regression model creation
+train$is_hit <- relevel(train$is_hit, ref = "hit")
+test$is_hit <- relevel(test$is_hit, ref = "hit")
+
+# METHOD 1: logistic regression model creation
 logis_model <- glm(is_hit ~ danceability + energy + loudness + valence +
                      tempo + speechiness + liveness + instrumentalness + 
                      acousticness + duration_ms, data = log_train, family = "binomial")
@@ -139,36 +155,103 @@ ggplot(log_test, aes(x = pred_prob, fill = is_hit)) +
        x = "Predicted Probability of Being a Hit",
        y = "Density") + theme_minimal()
 
-# partial effects plot on loudness (high probability)
-library(ggeffects)
-loudness_effect <- ggpredict(logis_model, terms = "loudness [all]")
+# METHOD 2: categorical classification models
+# CROSS-VALIDATION CONTROL
+knn_ctrl <- trainControl(method = "cv",
+                     number = 5,
+                     savePredictions = "final")
 
-ggplot(loudness_effect, aes(x = x, y = predicted)) +
-  geom_line(color = "red", size = 1.5) +
-  geom_ribbon(aes(ymin = conf.low, ymax = conf.high), alpha = 0.2) +
-  labs(title = "Effect of Loudness on Hit Probability",
-       x = "Loudness (0-1)",
-       y = "Predicted Probability of Being a Hit") + theme_minimal()
+# kNN  (tuning k)
+set.seed(123)
+knn_grid <- expand.grid(k = seq(3, 25, by = 2))
 
-# partial effects plot on instrumentalness (low probability)
-instrumentalness_effect <- ggpredict(logis_model, terms = "instrumentalness [all]")
+knn_fit <- train(is_hit ~ danceability + energy + loudness + valence +
+                   tempo + speechiness + liveness + instrumentalness +
+                   acousticness + duration_ms,
+                 data = train_small,
+                 method = "knn",
+                 trControl = knn_ctrl,
+                 tuneGrid  = knn_grid,
+                 metric    = "Accuracy")
 
-ggplot(instrumentalness_effect, aes(x = x, y = predicted)) +
-  geom_line(color = "red", size = 1.5) +
-  geom_ribbon(aes(ymin = conf.low, ymax = conf.high), alpha = 0.2) +
-  labs(title = "Effect of Instrumentalness on Hit Probability",
-       x = "Instrumentalness (0-1)",
-       y = "Predicted Probability of Being a Hit") + theme_minimal()
+# best k and cross-validated accuracy
+print(knn_fit$bestTune)
+print(max(knn_fit$results$Accuracy))
 
-# feature effects comparison
-library(jtools)
-effects <- plot_summs(logis_model,
-                      scale = TRUE,
-                      colors = "darkgreen") +
-  labs(title = "Standardize Feature Effects on Hit Probability") +
+# test-set accuracy
+knn_pred <- predict(knn_fit, newdata = test)
+knn_cm   <- confusionMatrix(knn_pred, test$is_hit, positive = "hit")
+cat("\nTest accuracy (k-NN):",
+    round(knn_cm$overall["Accuracy"], 3), "\n")
+
+# visualizing the results
+ggplot(knn_fit$results, aes(k, Accuracy)) +
+  geom_line() +
+  geom_point(size = 2) +
+  geom_vline(xintercept = knn_fit$bestTune$k,
+             linetype = "dashed") +
+  labs(title = "Cross-validated accuracy across k values",
+       x = "Number of neighbours (k)",
+       y = "Accuracy") +
   theme_minimal()
 
-effects
+# Decision tree  (tuning max depth)
+# "hit" is the second level, which is what twoClassSummary expects
+train$is_hit <- factor(train$is_hit, levels = c("nonhit", "hit"))
+test$is_hit <- factor(test$is_hit, levels = c("nonhit", "hit"))
+
+# cross-validation set up
+dt_ctrl <- trainControl(
+  method          = "cv",
+  number          = 5,
+  classProbs      = TRUE,
+  summaryFunction = twoClassSummary,
+  sampling        = "down",
+  savePredictions = "final"
+)
+
+tree_grid <- expand.grid(
+  cp = 10 ^ seq(-4, -1, length.out = 10)
+)
+
+set.seed(123)
+tree_fit <- train(is_hit ~ danceability + energy + loudness + valence +
+                    tempo + speechiness + liveness + instrumentalness +
+                    acousticness + duration_ms,
+                  data = train,
+                  method = "rpart",      # allows maxdepth tuning
+                  trControl = dt_ctrl,
+                  tuneGrid  = tree_grid,
+                  metric    = "ROC",
+                  control = rpart.control(cp = 0,
+                                          minsplit = 2,
+                                          minbucket = 1)
+                  )
+
+# best depth and cross-validated accuracy
+print(tree_fit$bestTune)
+print(max(tree_fit$results$ROC))
+
+prob_test <- predict(tree_fit, test, type = "prob")[ , "hit"]
+pred_test <- factor(ifelse(prob_test > 0.5, "hit", "nonhit"),
+                    levels = c("nonhit", "hit"))
+
+cm  <- confusionMatrix(pred_test, test$is_hit)
+auc <- roc(test$is_hit, prob_test, levels = c("nonhit", "hit"))$auc
+
+cat("\nTest accuracy :", round(cm$overall["Accuracy"], 3),
+    "\nTest ROC-AUC  :", round(auc, 3), "\n")
+
+# Optional: view the pruned tree
+library(rpart.plot)
+rpart.plot(tree_fit$finalModel,
+           type  = 4,      # tidy boxes
+           extra = 104,    # show class and % of hits
+           main  = "Best Decision Tree (cp tuned, down-sampled)")
+
+# optional: plot the final tree
+rpart.plot(tree_fit$finalModel, main = "Best Decision Tree")
+
 
 #Question 3 initial results using PCA 
 #Can we cluster songs into meaningful groups based on audio features?
