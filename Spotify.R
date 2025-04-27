@@ -252,12 +252,14 @@ rpart.plot(tree_fit$finalModel,
 # optional: plot the final tree
 rpart.plot(tree_fit$finalModel, main = "Best Decision Tree")
 
+summary(popularity_lm) 
 
 #Question 3 initial results using PCA 
 #Can we cluster songs into meaningful groups based on audio features?
 # Select only numeric audio features for PCA
 features <- spotify_data[, c("danceability", "energy", "loudness", "speechiness", "acousticness", 
                              "instrumentalness", "liveness", "valence", "tempo")]
+                             "instrumentalness", "liveness", "valence", "tempo")]]
 features_scaled <- scale(features)
 # Run PCA
 pca_result <- PCA(features_scaled, scale.unit = TRUE, graph = FALSE)
