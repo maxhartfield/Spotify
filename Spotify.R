@@ -8,8 +8,7 @@ library(factoextra)   # For PCA visualization
 library(cluster)      # For clustering analysis
 
 #import dataset
-spotify_data <- SpotifyFeatures # (enoch)
-spotify_data <- read.csv("~/Downloads/SpotifyFeatures.csv")
+spotify_data <- read.csv("SpotifyFeatures.csv")
 dim(spotify_data)
 View(spotify_data)
 
@@ -87,22 +86,25 @@ summary(popularity_lm)
 library(tidyverse)
 library(caret)
 
+# create my own dataset to use for this analysis
+enoch_df <- spotify_data
+
 # creating "is_hit" column by calculating 80th percentile of popularity
-hit_threshold <- quantile(spotify_data$popularity, probs = 0.80)
+hit_threshold <- quantile(enoch_df$popularity, probs = 0.80)
 
 # create binary target
-spotify_data <- spotify_data |>
+enoch_df <- enoch_df |>
   mutate(is_hit = as.factor(ifelse(popularity >= hit_threshold, 1, 0)))
 
 # double checking distribution of hit songs
-table(spotify_data$is_hit)
-prop.table(table(spotify_data$is_hit))
+table(enoch_df$is_hit)
+prop.table(table(enoch_df$is_hit))
 
 # split data into training and test data (80/20)
 set.seed(123)
-log_train_index <- createDataPartition(spotify_data$is_hit, p = 0.8, list = FALSE)
-log_train <- spotify_data[log_train_index, ]
-log_test <- spotify_data[-log_train_index, ]
+log_train_index <- createDataPartition(enoch_df$is_hit, p = 0.8, list = FALSE)
+log_train <- enoch_df[log_train_index, ]
+log_test <- enoch_df[-log_train_index, ]
 
 # normalizing numeric features
 preprocess_parms <- preProcess(log_train |>
