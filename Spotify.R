@@ -165,7 +165,86 @@ model_data <- spotify_data[, c("popularity", "acousticness", "danceability", "en
 popularity_lm <- lm(popularity ~ ., data = model_data)
 summary(popularity_lm)
 
-#Method 2 using LASSO regression
+#Method 2 using Ridge Regression and The LASSO:
+library(glmnet)
+
+# 1. Prepare the input matrix (X) and output (y)
+X <- as.matrix(model_data[, -1])  # All predictors (exclude popularity)
+y <- model_data$popularity        # Response variable (popularity)
+
+# 2. Set up a sequence of lambda values (regularization strengths)
+lambda_seq <- 10^seq(2, -3, by = -0.1)
+
+# 3. Ridge Regression (alpha = 0)
+ridge_model <- glmnet(X, y, alpha = 0, lambda = lambda_seq)
+
+# 4. LASSO Regression (alpha = 1)
+lasso_model <- glmnet(X, y, alpha = 1, lambda = lambda_seq)
+
+# 5. Use cross-validation to find the best lambda for Ridge
+cv_ridge <- cv.glmnet(X, y, alpha = 0)
+best_lambda_ridge <- cv_ridge$lambda.min
+
+# 6. Use cross-validation to find the best lambda for LASSO
+cv_lasso <- cv.glmnet(X, y, alpha = 1)
+best_lambda_lasso <- cv_lasso$lambda.min
+
+# 7. Fit final models using the best lambda
+ridge_final <- glmnet(X, y, alpha = 0, lambda = best_lambda_ridge)
+lasso_final <- glmnet(X, y, alpha = 1, lambda = best_lambda_lasso)
+
+# 8. View coefficients
+ridge_coefs <- coef(ridge_final)
+lasso_coefs <- coef(lasso_final)
+
+# Print coefficients
+print("Ridge Regression Coefficients:")
+print(ridge_coefs)
+
+print("LASSO Regression Coefficients:")
+print(lasso_coefs)
+
+#Method 3 using Decision Trees and Random Forest:
+library(tree)
+library(randomForest)
+################################################################################
+############## Tree-based Models: Decision Trees and Random Forests for Popularity
+
+# Load required libraries
+
+
+################################################################################
+############## Create Training and Test Sets
+set.seed(100)
+sample_size <- floor(0.75 * nrow(model_data)) # 75% training
+
+train_index <- sample(seq_len(nrow(model_data)), size = sample_size)
+spotify_train <- model_data[train_index, ]
+spotify_test <- model_data[-train_index, ]
+
+################################################################################
+############## Fit a Single Regression Tree
+tree_model <- tree(popularity ~ ., data = spotify_train)
+
+# View summary of the tree
+summary(tree_model)
+
+# Plot the tree
+plot(tree_model)
+text(tree_model, pretty = 0, cex = 0.6)
+title("Decision Tree for Predicting Song Popularity")
+
+################################################################################
+############## Fit a Random Forest Model
+set.seed(100)
+ncol_spotify <- ncol(model_data)
+
+rf_model <- randomForest(popularity ~ ., data = spotify_train, mtry = floor(sqrt(ncol_spotify - 1)), ntree = 500, importance = TRUE)
+
+# Plot variable importance
+varImpPlot(rf_model, 
+           main = "Random Forest Variable Importance for Song Popularity",
+           col = "skyblue")
 
 
 # Question 2: Can we accurately predict whether a song becomes a hit?
