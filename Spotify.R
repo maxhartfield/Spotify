@@ -252,7 +252,6 @@ rpart.plot(tree_fit$finalModel,
 # optional: plot the final tree
 rpart.plot(tree_fit$finalModel, main = "Best Decision Tree")
 
-
 #Question 3 initial results using PCA 
 #Can we cluster songs into meaningful groups based on audio features?
 # Select only numeric audio features for PCA
