@@ -203,46 +203,26 @@ print("LASSO Regression Coefficients:")
 print(lasso_coefs)
 
 #Method 3 using Decision Trees and Random Forest:
-library(tree)
 library(randomForest)
-################################################################################
-############## Tree-based Models: Decision Trees and Random Forests for Popularity
-
-# Load required libraries
-
-
-################################################################################
-############## Create Training and Test Sets
+# 1. Prepare the training and test sets
 set.seed(100)
 sample_size <- floor(0.75 * nrow(model_data)) # 75% training
-
 train_index <- sample(seq_len(nrow(model_data)), size = sample_size)
 spotify_train <- model_data[train_index, ]
 spotify_test <- model_data[-train_index, ]
 
-################################################################################
-############## Fit a Single Regression Tree
-tree_model <- tree(popularity ~ ., data = spotify_train, control = tree.control(nobs = nrow(spotify_train), mindev = 0.005))
-
-# View summary of the tree
-summary(tree_model)
-
-# Plot the tree
-plot(tree_model)
-text(tree_model, pretty = 0, cex = 0.6)
-title("Decision Tree for Predicting Song Popularity")
-
-################################################################################
-############## Fit a Random Forest Model
+# 2. Fit a Random Forest model
 set.seed(100)
 ncol_spotify <- ncol(model_data)
-
 rf_model <- randomForest(popularity ~ ., data = spotify_train, mtry = floor(sqrt(ncol_spotify - 1)), ntree = 500, importance = TRUE)
+
+# 3. View variable importance
 importance(rf_model)
 
-# Plot variable importance
+# 4. Plot variable importance
 varImpPlot(rf_model, 
            main = "Random Forest Variable Importance for Song Popularity")
+print(rf_model)
 
 # Question 2: Can we accurately predict whether a song becomes a hit?
 library(tidyverse)
