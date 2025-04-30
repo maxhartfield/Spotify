@@ -59,39 +59,29 @@ non_genre_cols <- spotify_data %>%
   select(-starts_with("genre:")) %>%
   select(-artist_name, -track_id, -track_name)
 
-# 2. Go through each column
 for (col in names(non_genre_cols)) {
   cat("\n============================================================\n")
   cat("Summary for:", col, "\n")
   
-  # Numeric columns
   if (is.numeric(non_genre_cols[[col]])) {
-    # Plot histogram
     hist(non_genre_cols[[col]],
          main = paste("Histogram of", col),
          xlab = col,
          col = "skyblue",
          breaks = 30)
     
-    # Print basic descriptive statistics
     cat("Min:", min(non_genre_cols[[col]], na.rm = TRUE), "\n")
     cat("Max:", max(non_genre_cols[[col]], na.rm = TRUE), "\n")
     cat("Mean:", mean(non_genre_cols[[col]], na.rm = TRUE), "\n")
     
-    # Categorical columns
   } else {
-    # Count categories
     counts <- table(non_genre_cols[[col]])
-    
-    # Bar plot for counts
     barplot(counts,
             main = paste("Bar Plot of", col),
             xlab = col,
             ylab = "Count",
             col = "skyblue",
             las = 2)  # rotate axis labels for readability
-    
-    # Also print counts for good measure
     print(counts)
   }
   
@@ -99,18 +89,13 @@ for (col in names(non_genre_cols)) {
 }
 
 genre_cols <- grep("^genre: ", names(spotify_data), value = TRUE)
-
-# 2. Sum across each genre column to get counts
 genre_counts <- spotify_data %>%
   select(all_of(genre_cols)) %>%
   summarise(across(everything(), sum)) %>%
   pivot_longer(cols = everything(), names_to = "Genre", values_to = "Count") %>%
   arrange(desc(Count))
-
-# 3. View the counts table
 print(genre_counts)
 
-# 4. Plot the counts
 barplot(height = genre_counts$Count,
         names.arg = gsub("genre: ", "", genre_counts$Genre), # Remove 'genre: ' prefix for display
         las = 2,          # Rotate x-axis labels
@@ -127,11 +112,11 @@ hist(spotify_data$duration_ms / 60000,
      breaks = 50,
      xlim = c(0, 10))
 
-# 1. Create one-hot encodings for key, mode, and time_signature
+#Create one-hot encodings for key, mode, and time_signature
 key_dummies <- model.matrix(~ key - 1, data = spotify_data)
 mode_dummies <- model.matrix(~ mode - 1, data = spotify_data)
 time_signature_dummies <- model.matrix(~ time_signature - 1, data = spotify_data)
-# 2. Combine the dummy variables back into spotify_data
+#Combine the dummy variables back into spotify_data
 spotify_data <- cbind(
   spotify_data[, !(names(spotify_data) %in% c("key", "mode", "time_signature"))], # Drop original columns
   key_dummies,
@@ -140,12 +125,10 @@ spotify_data <- cbind(
 )
 dim(spotify_data)
 View(spotify_data)
-# Compute correlation matrix
+#Compute correlation matrix
 numeric_cols <- sapply(spotify_data, is.numeric)
 cor_matrix <- cor(spotify_data[, numeric_cols], use = "pairwise.complete.obs") # safer if any NAs
 cor_matrix_rounded <- round(cor_matrix, 2)
-
-# Plot heatmap
 corrplot(cor_matrix_rounded, 
          method = "color",      # use color-coded squares
          type = "lower",        # only show the lower triangle
@@ -166,36 +149,36 @@ summary(popularity_lm)
 #Method 2 using Ridge Regression and The LASSO:
 library(glmnet)
 
-# 1. Prepare the input matrix (X) and output (y)
+#Prepare the input matrix (X) and output (y)
 X <- as.matrix(model_data[, -1])  # All predictors (exclude popularity)
 y <- model_data$popularity        # Response variable (popularity)
 
-# 2. Set up a sequence of lambda values (regularization strengths)
+#Set up a sequence of lambda values (regularization strengths)
 lambda_seq <- 10^seq(2, -3, by = -0.1)
 
-# 3. Ridge Regression (alpha = 0)
+#Ridge Regression (alpha = 0)
 ridge_model <- glmnet(X, y, alpha = 0, lambda = lambda_seq)
 
-# 4. LASSO Regression (alpha = 1)
+#LASSO Regression (alpha = 1)
 lasso_model <- glmnet(X, y, alpha = 1, lambda = lambda_seq)
 
-# 5. Use cross-validation to find the best lambda for Ridge
+#Use cross-validation to find the best lambda for Ridge
 cv_ridge <- cv.glmnet(X, y, alpha = 0)
 best_lambda_ridge <- cv_ridge$lambda.min
 
-# 6. Use cross-validation to find the best lambda for LASSO
+#Use cross-validation to find the best lambda for LASSO
 cv_lasso <- cv.glmnet(X, y, alpha = 1)
 best_lambda_lasso <- cv_lasso$lambda.min
 
-# 7. Fit final models using the best lambda
+#Fit final models using the best lambda
 ridge_final <- glmnet(X, y, alpha = 0, lambda = best_lambda_ridge)
 lasso_final <- glmnet(X, y, alpha = 1, lambda = best_lambda_lasso)
 
-# 8. View coefficients
+#View coefficients
 ridge_coefs <- coef(ridge_final)
 lasso_coefs <- coef(lasso_final)
 
-# Print coefficients
+#Print coefficients
 print("Ridge Regression Coefficients:")
 print(ridge_coefs)
 
@@ -204,22 +187,22 @@ print(lasso_coefs)
 
 #Method 3 using Decision Trees and Random Forest:
 library(randomForest)
-# 1. Prepare the training and test sets
+#Prepare the training and test sets
 set.seed(100)
 sample_size <- floor(0.75 * nrow(model_data)) # 75% training
 train_index <- sample(seq_len(nrow(model_data)), size = sample_size)
 spotify_train <- model_data[train_index, ]
 spotify_test <- model_data[-train_index, ]
 
-# 2. Fit a Random Forest model
+#Fit a Random Forest model
 set.seed(100)
 ncol_spotify <- ncol(model_data)
 rf_model <- randomForest(popularity ~ ., data = spotify_train, mtry = floor(sqrt(ncol_spotify - 1)), ntree = 500, importance = TRUE)
 
-# 3. View variable importance
+#View variable importance
 importance(rf_model)
 
-# 4. Plot variable importance
+#Plot variable importance
 varImpPlot(rf_model, 
            main = "Random Forest Variable Importance for Song Popularity")
 print(rf_model)
