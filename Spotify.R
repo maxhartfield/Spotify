@@ -8,7 +8,7 @@ library(factoextra)   # For PCA visualization
 library(cluster)      # For clustering analysis
 
 #import dataset
-spotify_data <- read.csv("SpotifyFeatures.csv")
+spotify_data <- read.csv("~/Downloads/SpotifyFeatures.csv")
 dim(spotify_data)
 View(spotify_data)
 
@@ -37,7 +37,7 @@ duplicates_count <- spotify_data %>%
 nrow(duplicates_count)
 
 spotify_data <- spotify_data %>%
-  group_by(track_id, track_name, artist_name) %>%
+  group_by(track_id, track_name, artist_name, key, mode, time_signature) %>%
   summarise(across(where(is.numeric), ~ ifelse(all(. %in% c(0, 1)), max(.), mean(.))), .groups = "drop")
 genre_cols <- grep("^genre", names(spotify_data), value = TRUE)
 new_names <- setNames(paste0("genre: ", sub("^genre", "", genre_cols)), genre_cols)
@@ -45,42 +45,184 @@ names(spotify_data)[names(spotify_data) %in% genre_cols] <- new_names
 View(spotify_data)
 col1 <- "genre: Children's Music"
 col2 <- "genre: Children’s Music"
+
 spotify_data[[col1]] <- pmax(
   spotify_data[[col1]],
   spotify_data[[col2]],
   na.rm = TRUE
 )
+spotify_data[[col2]] <- NULL
 dim(spotify_data)
-#explore data
-summary(spotify_data)
-hist(spotify_data$popularity, main = "Distribution of Popularity", xlab = "Popularity", col = "skyblue", breaks = 30)
+
+#Explore the data
+non_genre_cols <- spotify_data %>%
+  select(-starts_with("genre:")) %>%
+  select(-artist_name, -track_id, -track_name)
+
+# 2. Go through each column
+for (col in names(non_genre_cols)) {
+  cat("\n============================================================\n")
+  cat("Summary for:", col, "\n")
+  
+  # Numeric columns
+  if (is.numeric(non_genre_cols[[col]])) {
+    # Plot histogram
+    hist(non_genre_cols[[col]],
+         main = paste("Histogram of", col),
+         xlab = col,
+         col = "skyblue",
+         breaks = 30)
+    
+    # Print basic descriptive statistics
+    cat("Min:", min(non_genre_cols[[col]], na.rm = TRUE), "\n")
+    cat("Max:", max(non_genre_cols[[col]], na.rm = TRUE), "\n")
+    cat("Mean:", mean(non_genre_cols[[col]], na.rm = TRUE), "\n")
+    
+    # Categorical columns
+  } else {
+    # Count categories
+    counts <- table(non_genre_cols[[col]])
+    
+    # Bar plot for counts
+    barplot(counts,
+            main = paste("Bar Plot of", col),
+            xlab = col,
+            ylab = "Count",
+            col = "skyblue",
+            las = 2)  # rotate axis labels for readability
+    
+    # Also print counts for good measure
+    print(counts)
+  }
+  
+  cat("============================================================\n")
+}
+
+genre_cols <- grep("^genre: ", names(spotify_data), value = TRUE)
+
+# 2. Sum across each genre column to get counts
+genre_counts <- spotify_data %>%
+  select(all_of(genre_cols)) %>%
+  summarise(across(everything(), sum)) %>%
+  pivot_longer(cols = everything(), names_to = "Genre", values_to = "Count") %>%
+  arrange(desc(Count))
+
+# 3. View the counts table
+print(genre_counts)
+
+# 4. Plot the counts
+barplot(height = genre_counts$Count,
+        names.arg = gsub("genre: ", "", genre_counts$Genre), # Remove 'genre: ' prefix for display
+        las = 2,          # Rotate x-axis labels
+        col = "skyblue",
+        main = "Song Counts by Genre",
+        xlab = "Genre",
+        ylab = "Number of Songs",
+        cex.names = 0.7)
+
 hist(spotify_data$duration_ms / 60000,
-     main = "Track Duration (0–10 min)", 
+     main = "Histogram of duration_ms in minutes", 
      xlab = "Duration (min)", 
-     col = "orange", 
+     col = "skyblue", 
      breaks = 50,
      xlim = c(0, 10))
+
+# 1. Create one-hot encodings for key, mode, and time_signature
+key_dummies <- model.matrix(~ key - 1, data = spotify_data)
+mode_dummies <- model.matrix(~ mode - 1, data = spotify_data)
+time_signature_dummies <- model.matrix(~ time_signature - 1, data = spotify_data)
+# 2. Combine the dummy variables back into spotify_data
+spotify_data <- cbind(
+  spotify_data[, !(names(spotify_data) %in% c("key", "mode", "time_signature"))], # Drop original columns
+  key_dummies,
+  mode_dummies,
+  time_signature_dummies
+)
+dim(spotify_data)
+View(spotify_data)
+# Compute correlation matrix
 numeric_cols <- sapply(spotify_data, is.numeric)
-cor_matrix <- cor(spotify_data[, numeric_cols])
-round(cor_matrix, 2)
-genre_cols <- grep("^genre: ", names(spotify_data), value = TRUE)
-long_genres <- spotify_data %>%
-  select(track_id, popularity, all_of(genre_cols)) %>%
-  pivot_longer(cols = all_of(genre_cols), names_to = "genre", values_to = "present") %>%
-  filter(present == 1)
-par(mar = c(10, 4, 4, 2))  # bottom, left, top, right
-boxplot(popularity ~ genre, data = long_genres,
-        main = "Popularity by Genre (One-Hot Encoded)",
-        xlab = "", ylab = "Popularity",
-        las = 2,
-        col = "skyblue") 
-#Question 1 initial results using linear regression
+cor_matrix <- cor(spotify_data[, numeric_cols], use = "pairwise.complete.obs") # safer if any NAs
+cor_matrix_rounded <- round(cor_matrix, 2)
+
+# Plot heatmap
+corrplot(cor_matrix_rounded, 
+         method = "color",      # use color-coded squares
+         type = "lower",        # only show the lower triangle
+         tl.col = "black",      # text label color
+         tl.cex = 0.6,          # text label size
+         number.cex = 0.0001,      # optional: smaller numbers
+         addCoef.col = "black", # add correlation coefficients
+         col = colorRampPalette(c("blue", "white", "red"))(200)) # blue = negative, red = positive
+
+#Question 1 initial results / method 1 using linear regression
 #What audio features most influence a song’s popularity score?
 model_data <- spotify_data[, c("popularity", "acousticness", "danceability", "energy", 
                                "instrumentalness", "liveness", "loudness", 
                                "speechiness", "tempo", "valence")]
 popularity_lm <- lm(popularity ~ ., data = model_data)
 summary(popularity_lm)
+
+#Method 2 using Ridge Regression and The LASSO:
+library(glmnet)
+
+# 1. Prepare the input matrix (X) and output (y)
+X <- as.matrix(model_data[, -1])  # All predictors (exclude popularity)
+y <- model_data$popularity        # Response variable (popularity)
+
+# 2. Set up a sequence of lambda values (regularization strengths)
+lambda_seq <- 10^seq(2, -3, by = -0.1)
+
+# 3. Ridge Regression (alpha = 0)
+ridge_model <- glmnet(X, y, alpha = 0, lambda = lambda_seq)
+
+# 4. LASSO Regression (alpha = 1)
+lasso_model <- glmnet(X, y, alpha = 1, lambda = lambda_seq)
+
+# 5. Use cross-validation to find the best lambda for Ridge
+cv_ridge <- cv.glmnet(X, y, alpha = 0)
+best_lambda_ridge <- cv_ridge$lambda.min
+
+# 6. Use cross-validation to find the best lambda for LASSO
+cv_lasso <- cv.glmnet(X, y, alpha = 1)
+best_lambda_lasso <- cv_lasso$lambda.min
+
+# 7. Fit final models using the best lambda
+ridge_final <- glmnet(X, y, alpha = 0, lambda = best_lambda_ridge)
+lasso_final <- glmnet(X, y, alpha = 1, lambda = best_lambda_lasso)
+
+# 8. View coefficients
+ridge_coefs <- coef(ridge_final)
+lasso_coefs <- coef(lasso_final)
+
+# Print coefficients
+print("Ridge Regression Coefficients:")
+print(ridge_coefs)
+
+print("LASSO Regression Coefficients:")
+print(lasso_coefs)
+
+#Method 3 using Decision Trees and Random Forest:
+library(randomForest)
+# 1. Prepare the training and test sets
+set.seed(100)
+sample_size <- floor(0.75 * nrow(model_data)) # 75% training
+train_index <- sample(seq_len(nrow(model_data)), size = sample_size)
+spotify_train <- model_data[train_index, ]
+spotify_test <- model_data[-train_index, ]
+
+# 2. Fit a Random Forest model
+set.seed(100)
+ncol_spotify <- ncol(model_data)
+rf_model <- randomForest(popularity ~ ., data = spotify_train, mtry = floor(sqrt(ncol_spotify - 1)), ntree = 500, importance = TRUE)
+
+# 3. View variable importance
+importance(rf_model)
+
+# 4. Plot variable importance
+varImpPlot(rf_model, 
+           main = "Random Forest Variable Importance for Song Popularity")
+print(rf_model)
 
 # Question 2: Can we accurately predict whether a song becomes a hit?
 library(tidyverse)
