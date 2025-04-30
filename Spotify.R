@@ -252,41 +252,103 @@ rpart.plot(tree_fit$finalModel,
 # optional: plot the final tree
 rpart.plot(tree_fit$finalModel, main = "Best Decision Tree")
 
-#Question 3 initial results using PCA 
-#Can we cluster songs into meaningful groups based on audio features?
-# Select only numeric audio features for PCA
-features <- spotify_data[, c("danceability", "energy", "loudness", "speechiness", "acousticness", 
-                             "instrumentalness", "liveness", "valence", "tempo")]
-                             "instrumentalness", "liveness", "valence", "tempo")]]
+# ---------------------- Question 3 -------------------------
+# Sample ~1% for quicker processing
+set.seed(123)
+sample_size <- ceiling(0.01 * nrow(spotify_data))
+spotify_sample <- spotify_data %>% sample_n(sample_size)
+
+# ---------------------- PCA + K-MEANS ----------------------
+
+# Select audio features and scale them
+features <- spotify_sample %>%
+  select(danceability, energy, loudness, speechiness, acousticness, 
+         instrumentalness, liveness, valence, tempo)
+
 features_scaled <- scale(features)
-# Run PCA
+
+# Perform PCA
 pca_result <- PCA(features_scaled, scale.unit = TRUE, graph = FALSE)
 
-# Visualize variance explained by each principal component
+# Visualize variance explained
 fviz_eig(pca_result, addlabels = TRUE, ylim = c(0, 50))
 
-# PCA Biplot (First two components)
-fviz_pca_biplot(pca_result, 
-                repel = TRUE, 
-                col.var = "blue", # Color of variables
-                col.ind = "red")  # Color of observations (songs)
+# PCA Biplot
+fviz_pca_biplot(pca_result, repel = TRUE, 
+                col.var = "blue", col.ind = "red")
 
-# Extract first two principal components
+# Extract first two components for clustering
 pca_data <- data.frame(pca_result$ind$coord[, 1:2])
 
-# Determine the optimal number of clusters using the Elbow Method
+# Determine optimal clusters using Elbow Method
 fviz_nbclust(pca_data, kmeans, method = "wss")
 
-# Apply K-Means Clustering with chosen k (e.g., k = 3)
+# Apply K-means with k = 4
 set.seed(123)
-kmeans_result <- kmeans(pca_data, centers = 3, nstart = 25)
+kmeans_result <- kmeans(pca_data, centers = 4, nstart = 25)
 
-# Visualize Clusters
-fviz_cluster(kmeans_result, data = pca_data, 
+# Visualize K-means clusters
+fviz_cluster(kmeans_result, data = pca_data,
              ellipse.type = "convex",
-             geom = "point", 
              palette = "jco",
              ggtheme = theme_minimal())
 
-#Question 4 results 
-#
+# Add cluster assignments to original data
+spotify_sample$cluster_kmeans <- kmeans_result$cluster
+
+# Summarize mean feature values per cluster
+cluster_summary_kmeans <- spotify_sample %>%
+  group_by(cluster_kmeans) %>%
+  summarise(across(where(is.numeric), mean, na.rm = TRUE))
+
+# View a subset of features (optional)
+cluster_summary_kmeans[, 4:13]
+
+# Silhouette evaluation for K-means
+sil <- silhouette(kmeans_result$cluster, dist(features_scaled))
+plot(sil, border = NA)
+mean(sil[, 3])  # average silhouette width
+
+# ------------------ HIERARCHICAL CLUSTERING ------------------
+
+# Standardize numeric features
+spotify_numeric <- spotify_sample %>% select_if(is.numeric)
+spotify_scaled <- scale(spotify_numeric)
+
+# Compute distance matrix and perform hierarchical clustering
+dist_matrix <- dist(spotify_scaled)
+hc <- hclust(dist_matrix, method = "ward.D2")
+
+# Plot dendrogram
+plot(hc, main = "Hierarchical Clustering Dendrogram", xlab = "", sub = "", cex = 0.6)
+
+# Cut tree into 4 clusters
+spotify_sample$cluster_hc <- cutree(hc, k = 4)
+
+# Summarize clusters
+cluster_summary_hc <- spotify_sample %>%
+  group_by(cluster_hc) %>%
+  summarise(across(where(is.numeric), mean, na.rm = TRUE))
+
+print(cluster_summary_hc)
+
+# PCA for 2D visualization of hierarchical clusters
+pca_hc <- prcomp(spotify_scaled)
+pca_data_hc <- data.frame(PC1 = pca_hc$x[, 1], PC2 = pca_hc$x[, 2], 
+                          Cluster = factor(spotify_sample$cluster_hc))
+
+ggplot(pca_data_hc, aes(PC1, PC2, color = Cluster)) +
+  geom_point(size = 2) +
+  labs(title = "Hierarchical Clustering (PCA Projection)")
+
+# Compute WCSS for hierarchical clusters
+wcss_hc <- function(data, clusters) {
+  sum(sapply(unique(clusters), function(k) {
+    cluster_points <- data[clusters == k, , drop = FALSE]
+    center <- colMeans(cluster_points)
+    sum(rowSums((cluster_points - center)^2))
+  }))
+}
+
+wcss_value <- wcss_hc(spotify_scaled, spotify_sample$cluster_hc)
+print(wcss_value)
